@@ -19,7 +19,7 @@ class MainActivity : AppCompatActivity() {
             setContentView(R.layout.activity_main)
         } catch (e: Exception) {
             Toast.makeText(this, "Lỗi tải giao diện: ${e.message}", Toast.LENGTH_LONG).show()
-            e.printStackTrace() // This will help with debugging
+            e.printStackTrace()
             finish()
             return
         }

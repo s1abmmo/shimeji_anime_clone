@@ -22,7 +22,7 @@ import android.view.WindowManager
 import android.view.animation.Animation
 import android.view.animation.LinearInterpolator
 import android.view.animation.TranslateAnimation
-import android.widget.ImageView
+import com.airbnb.lottie.LottieAnimationView
 import kotlin.math.abs
 import kotlin.random.Random
 
@@ -32,7 +32,7 @@ class ShimejiService : Service() {
     private var shimejiView: View? = null
     private lateinit var shimejiParams: WindowManager.LayoutParams
     private lateinit var displayMetrics: DisplayMetrics
-    private lateinit var shimejiImageView: ImageView
+    private lateinit var shimejiAnimationView: LottieAnimationView
 
     private var initialX: Int = 0
     private var initialY: Int = 0
@@ -79,7 +79,7 @@ class ShimejiService : Service() {
 
             // Tải layout
             shimejiView = LayoutInflater.from(this).inflate(R.layout.shimeji_layout, null)
-            shimejiImageView = shimejiView!!.findViewById(R.id.shimejiImageView)
+            shimejiAnimationView = shimejiView!!.findViewById(R.id.shimejiAnimationView)
 
             // Thiết lập thông số cho cửa sổ overlay
             val layoutFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -164,7 +164,7 @@ class ShimejiService : Service() {
             val notification = Notification.Builder(this, "shimeji_channel")
                 .setContentTitle("Shimeji đang chạy")
                 .setContentText("Shimeji đang hoạt động trên màn hình")
-                .setSmallIcon(android.R.drawable.ic_dialog_info) // Thay bằng icon của bạn
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .build()
 
             try {
@@ -231,6 +231,7 @@ class ShimejiService : Service() {
         animation.setAnimationListener(object : Animation.AnimationListener {
             override fun onAnimationStart(p0: Animation?) {
                 Log.d(TAG, "Jump animation started")
+                shimejiAnimationView.playAnimation()
             }
             override fun onAnimationEnd(p0: Animation?) {
                 isAnimating = false
@@ -240,7 +241,7 @@ class ShimejiService : Service() {
         })
 
         shimejiView?.post {
-            shimejiImageView.startAnimation(animation)
+            shimejiAnimationView.startAnimation(animation)
         }
     }
 
@@ -255,11 +256,12 @@ class ShimejiService : Service() {
         animation.setAnimationListener(object : Animation.AnimationListener {
             override fun onAnimationStart(p0: Animation?) {
                 if (moveX < 0) {
-                    shimejiImageView.scaleX = -1f
+                    shimejiAnimationView.scaleX = -1f
                 } else {
-                    shimejiImageView.scaleX = 1f
+                    shimejiAnimationView.scaleX = 1f
                 }
                 Log.d(TAG, "Walk animation started, direction: ${if (moveX < 0) "left" else "right"}")
+                shimejiAnimationView.playAnimation()
             }
 
             override fun onAnimationEnd(p0: Animation?) {
@@ -281,7 +283,7 @@ class ShimejiService : Service() {
         })
 
         shimejiView?.post {
-            shimejiImageView.startAnimation(animation)
+            shimejiAnimationView.startAnimation(animation)
         }
     }
 
@@ -298,6 +300,7 @@ class ShimejiService : Service() {
             animation.setAnimationListener(object : Animation.AnimationListener {
                 override fun onAnimationStart(p0: Animation?) {
                     Log.d(TAG, "Fall animation started")
+                    shimejiAnimationView.playAnimation()
                 }
                 override fun onAnimationEnd(p0: Animation?) {
                     shimejiParams.y += fallDistance.toInt()
@@ -313,7 +316,7 @@ class ShimejiService : Service() {
             })
 
             shimejiView?.post {
-                shimejiImageView.startAnimation(animation)
+                shimejiAnimationView.startAnimation(animation)
             }
         }
     }
