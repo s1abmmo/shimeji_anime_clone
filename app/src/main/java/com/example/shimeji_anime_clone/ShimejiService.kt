@@ -19,9 +19,6 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.view.animation.Animation
-import android.view.animation.LinearInterpolator
-import android.view.animation.TranslateAnimation
 import com.airbnb.lottie.LottieAnimationView
 import kotlin.math.abs
 import kotlin.random.Random
@@ -40,16 +37,31 @@ class ShimejiService : Service() {
     private var initialTouchY: Float = 0f
     private var isDragging: Boolean = false
     private var isAnimating: Boolean = false
+    private var isClimbing: Boolean = false
     private val DRAG_THRESHOLD = 10f
     private val TAG = "ShimejiService"
+    private val MARGIN = 0 // Biến để tùy chỉnh lề (px), 0 để bám sát hoàn toàn
 
     private val handler = Handler(Looper.getMainLooper())
     private val random = Random.Default
+    private var currentAnimation: String = "walk"
+
+    // Danh sách các animation
+    private val animations = mapOf(
+        "climb" to "climb.json",
+        "walk" to "walk.json",
+        "fall" to "fall.json",
+        "drag" to "drag.json"
+    )
 
     private val movementRunnable = object : Runnable {
         override fun run() {
             if (!isDragging && !isAnimating) {
-                randomMovement()
+                if (isClimbing) {
+                    randomClimb()
+                } else {
+                    randomWalk()
+                }
             }
             handler.postDelayed(this, 3000)
         }
@@ -81,6 +93,9 @@ class ShimejiService : Service() {
             shimejiView = LayoutInflater.from(this).inflate(R.layout.shimeji_layout, null)
             shimejiAnimationView = shimejiView!!.findViewById(R.id.shimejiAnimationView)
 
+            // Set animation mặc định
+            setAnimation("walk")
+
             // Thiết lập thông số cho cửa sổ overlay
             val layoutFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -108,19 +123,21 @@ class ShimejiService : Service() {
                         initialY = shimejiParams.y
                         initialTouchX = event.rawX
                         initialTouchY = event.rawY
-                        isDragging = false
-                        stopAutomaticMovement()
+                        isDragging = true
+                        isClimbing = false // Thoát trạng thái leo khi kéo
+                        handler.removeCallbacks(movementRunnable)
+                        setAnimation("drag")
                         false
                     }
                     MotionEvent.ACTION_MOVE -> {
                         val deltaX = abs(event.rawX - initialTouchX)
                         val deltaY = abs(event.rawY - initialTouchY)
-                        if (!isDragging && (deltaX > DRAG_THRESHOLD || deltaY > DRAG_THRESHOLD)) {
-                            isDragging = true
-                        }
-                        if (isDragging) {
+                        if (deltaX > DRAG_THRESHOLD || deltaY > DRAG_THRESHOLD) {
                             shimejiParams.x = initialX + (event.rawX - initialTouchX).toInt()
                             shimejiParams.y = initialY + (event.rawY - initialTouchY).toInt()
+                            // Giới hạn trong màn hình với MARGIN
+                            shimejiParams.x = shimejiParams.x.coerceIn(0, displayMetrics.widthPixels - MARGIN)
+                            shimejiParams.y = shimejiParams.y.coerceIn(0, displayMetrics.heightPixels - MARGIN)
                             try {
                                 windowManager.updateViewLayout(shimejiView, shimejiParams)
                             } catch (e: Exception) {
@@ -131,7 +148,7 @@ class ShimejiService : Service() {
                     }
                     MotionEvent.ACTION_UP -> {
                         isDragging = false
-                        startAutomaticMovement()
+                        fallAnimation()
                         false
                     }
                     else -> false
@@ -142,8 +159,8 @@ class ShimejiService : Service() {
             windowManager.addView(shimejiView, shimejiParams)
             Log.d(TAG, "ShimejiView added to window")
 
-            // Bắt đầu chuyển động tự động
-            startAutomaticMovement()
+            // Bắt đầu chuyển động ngẫu nhiên
+            handler.postDelayed(movementRunnable, 2000)
         } catch (e: Exception) {
             Log.e(TAG, "Error in onCreate: ${e.message}")
             e.printStackTrace()
@@ -195,135 +212,207 @@ class ShimejiService : Service() {
         Log.d(TAG, "Display metrics updated: ${displayMetrics.widthPixels}x${displayMetrics.heightPixels}")
     }
 
-    private fun startAutomaticMovement() {
-        handler.postDelayed(movementRunnable, 2000)
-        Log.d(TAG, "Automatic movement started")
-    }
-
-    private fun stopAutomaticMovement() {
-        handler.removeCallbacks(movementRunnable)
-        Log.d(TAG, "Automatic movement stopped")
-    }
-
-    private fun randomMovement() {
-        if (isAnimating) return
-        updateDisplayMetrics()
-
-        val action = random.nextInt(3)
-        when (action) {
-            0 -> jumpAnimation()
-            1 -> walkAnimation()
-            2 -> fallAnimation()
-        }
-        Log.d(TAG, "Random movement action: $action")
-    }
-
-    private fun jumpAnimation() {
-        isAnimating = true
-
-        val jumpHeight = -100f
-        val animation = TranslateAnimation(0f, 0f, 0f, jumpHeight)
-        animation.duration = 500
-        animation.repeatCount = 1
-        animation.repeatMode = Animation.REVERSE
-        animation.interpolator = LinearInterpolator()
-
-        animation.setAnimationListener(object : Animation.AnimationListener {
-            override fun onAnimationStart(p0: Animation?) {
-                Log.d(TAG, "Jump animation started")
+    private fun setAnimation(animationKey: String) {
+        if (currentAnimation != animationKey) {
+            val animationFile = animations[animationKey]
+            if (animationFile != null) {
+                shimejiAnimationView.setAnimation(animationFile)
                 shimejiAnimationView.playAnimation()
+                currentAnimation = animationKey
+                Log.d(TAG, "Switched to animation: $animationKey")
+            } else {
+                Log.e(TAG, "Animation not found for key: $animationKey")
             }
-            override fun onAnimationEnd(p0: Animation?) {
-                isAnimating = false
-                Log.d(TAG, "Jump animation ended")
-            }
-            override fun onAnimationRepeat(p0: Animation?) {}
-        })
-
-        shimejiView?.post {
-            shimejiAnimationView.startAnimation(animation)
         }
     }
 
-    private fun walkAnimation() {
+    private fun randomWalk() {
+        if (isAnimating || isDragging || isClimbing) return
         isAnimating = true
+        setAnimation("walk")
 
-        val moveX = (random.nextInt(300) - 150).toFloat()
-        val animation = TranslateAnimation(0f, moveX, 0f, 0f)
-        animation.duration = 1000
-        animation.interpolator = LinearInterpolator()
+        val moveX = if (random.nextBoolean()) 150f else -150f // Di chuyển ngẫu nhiên trái hoặc phải
+        val targetX = (shimejiParams.x + moveX).coerceIn(0f, (displayMetrics.widthPixels - MARGIN).toFloat())
+        val distance = abs(targetX - shimejiParams.x)
+        val speed = 100f // 100px mỗi giây
+        val duration = (distance / speed * 1000).toLong().coerceAtMost(5000) // Tối đa 5 giây
+        val steps = 30 // 30 FPS
+        val stepDuration = duration / steps
+        val stepDistance = (targetX - shimejiParams.x) / steps
 
-        animation.setAnimationListener(object : Animation.AnimationListener {
-            override fun onAnimationStart(p0: Animation?) {
-                if (moveX < 0) {
-                    shimejiAnimationView.scaleX = -1f
+        var currentStep = 0
+
+        // Cập nhật vị trí từ từ
+        val walkRunnable = object : Runnable {
+            override fun run() {
+                if (currentStep < steps && !isDragging && !isClimbing) {
+                    shimejiParams.x += stepDistance.toInt()
+                    shimejiParams.x = shimejiParams.x.coerceIn(0, displayMetrics.widthPixels - MARGIN)
+                    try {
+                        windowManager.updateViewLayout(shimejiView, shimejiParams)
+                        Log.d(TAG, "Walking, current X: ${shimejiParams.x}")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error updating view during walk: ${e.message}")
+                    }
+                    currentStep++
+                    handler.postDelayed(this, stepDuration)
                 } else {
-                    shimejiAnimationView.scaleX = 1f
+                    shimejiParams.x = targetX.toInt()
+                    try {
+                        windowManager.updateViewLayout(shimejiView, shimejiParams)
+                        Log.d(TAG, "Walk animation ended, new X: ${shimejiParams.x}")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error updating view after walk: ${e.message}")
+                    }
+                    isAnimating = false
+
+                    // Kiểm tra chạm tường để chuyển sang trạng thái leo
+                    if (shimejiParams.x <= 0 || shimejiParams.x >= displayMetrics.widthPixels - MARGIN) {
+                        isClimbing = true
+                        randomClimb()
+                    } else {
+                        setAnimation("walk")
+                    }
                 }
-                Log.d(TAG, "Walk animation started, direction: ${if (moveX < 0) "left" else "right"}")
-                shimejiAnimationView.playAnimation()
             }
-
-            override fun onAnimationEnd(p0: Animation?) {
-                shimejiParams.x += moveX.toInt()
-                if (shimejiParams.x < 0) shimejiParams.x = 0
-                if (shimejiParams.x > displayMetrics.widthPixels - 150) {
-                    shimejiParams.x = displayMetrics.widthPixels - 150
-                }
-                try {
-                    windowManager.updateViewLayout(shimejiView, shimejiParams)
-                    Log.d(TAG, "Walk animation ended, new X: ${shimejiParams.x}")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error updating view after walk: ${e.message}")
-                }
-                isAnimating = false
-            }
-
-            override fun onAnimationRepeat(p0: Animation?) {}
-        })
-
-        shimejiView?.post {
-            shimejiAnimationView.startAnimation(animation)
         }
+
+        // Lật hướng nhân vật
+        shimejiAnimationView.scaleX = if (moveX < 0) -1f else 1f
+        Log.d(TAG, "Walk animation started, direction: ${if (moveX < 0) "left" else "right"}")
+        handler.post(walkRunnable)
     }
 
     private fun fallAnimation() {
+        if (isAnimating || isDragging) return
         updateDisplayMetrics()
-        if (shimejiParams.y < displayMetrics.heightPixels - 300) {
+        val groundY = displayMetrics.heightPixels - MARGIN // Vị trí đáy màn hình
+
+        if (shimejiParams.y < groundY) {
             isAnimating = true
+            isClimbing = false // Thoát trạng thái leo khi rơi
+            setAnimation("fall")
 
-            val fallDistance = 300f
-            val animation = TranslateAnimation(0f, 0f, 0f, fallDistance)
-            animation.duration = 800
-            animation.interpolator = LinearInterpolator()
+            val fallDistance = (groundY - shimejiParams.y).toFloat()
+            val fallSpeed = 100f // 100px mỗi giây
+            val duration = (fallDistance / fallSpeed * 1000).toLong().coerceAtMost(5000) // Tối đa 5 giây
+            val steps = 30 // 30 FPS
+            val stepDuration = duration / steps
+            val stepDistance = fallDistance / steps
 
-            animation.setAnimationListener(object : Animation.AnimationListener {
-                override fun onAnimationStart(p0: Animation?) {
-                    Log.d(TAG, "Fall animation started")
-                    shimejiAnimationView.playAnimation()
+            var currentStep = 0
+
+            // Cập nhật vị trí từ từ
+            val fallRunnable = object : Runnable {
+                override fun run() {
+                    if (currentStep < steps && shimejiParams.y < groundY && !isDragging) {
+                        shimejiParams.y += stepDistance.toInt()
+                        if (shimejiParams.y > groundY) shimejiParams.y = groundY
+                        try {
+                            windowManager.updateViewLayout(shimejiView, shimejiParams)
+                            Log.d(TAG, "Falling, current Y: ${shimejiParams.y}")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error updating view during fall: ${e.message}")
+                        }
+                        currentStep++
+                        handler.postDelayed(this, stepDuration)
+                    } else {
+                        shimejiParams.y = groundY
+                        try {
+                            windowManager.updateViewLayout(shimejiView, shimejiParams)
+                            Log.d(TAG, "Fall animation ended, new Y: ${shimejiParams.y}")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error updating view after fall: ${e.message}")
+                        }
+                        isAnimating = false
+                        setAnimation("walk")
+                        handler.postDelayed(movementRunnable, 2000)
+                    }
                 }
-                override fun onAnimationEnd(p0: Animation?) {
-                    shimejiParams.y += fallDistance.toInt()
+            }
+
+            handler.post(fallRunnable)
+        } else {
+            isClimbing = false
+            setAnimation("walk")
+            handler.postDelayed(movementRunnable, 2000)
+        }
+    }
+
+    private fun randomClimb() {
+        if (isAnimating || isDragging || !isClimbing) return
+        updateDisplayMetrics()
+        val groundY = displayMetrics.heightPixels - MARGIN // Vị trí đáy màn hình
+        val topY = 0
+
+        // Nếu ở đỉnh màn hình, dừng lại
+        if (shimejiParams.y <= topY) {
+            isAnimating = false
+            setAnimation("walk")
+            return
+        }
+
+        isAnimating = true
+        setAnimation("climb")
+
+        val isLeftWall = shimejiParams.x <= 0
+        val moveY = if (random.nextBoolean()) -150f else 150f // Lên hoặc xuống
+        val targetY = (shimejiParams.y + moveY).coerceIn(topY.toFloat(), groundY.toFloat())
+        val distance = abs(targetY - shimejiParams.y)
+        val speed = 200f // 100px mỗi giây
+        val duration = (distance / speed * 1000).toLong().coerceAtMost(5000) // Tối đa 5 giây
+        val steps = 60 // 30 FPS
+        val stepDuration = duration / steps
+        val stepDistance = (targetY - shimejiParams.y) / steps
+
+        var currentStep = 0
+
+        // Cập nhật vị trí từ từ
+        val climbRunnable = object : Runnable {
+            override fun run() {
+                if (currentStep < steps && !isDragging && isClimbing) {
+                    shimejiParams.y += stepDistance.toInt()
+                    shimejiParams.y = shimejiParams.y.coerceIn(topY, groundY)
                     try {
                         windowManager.updateViewLayout(shimejiView, shimejiParams)
-                        Log.d(TAG, "Fall animation ended, new Y: ${shimejiParams.y}")
+                        Log.d(TAG, "Climbing, current Y: ${shimejiParams.y}")
                     } catch (e: Exception) {
-                        Log.e(TAG, "Error updating view after fall: ${e.message}")
+                        Log.e(TAG, "Error updating view during climb: ${e.message}")
+                    }
+                    currentStep++
+                    handler.postDelayed(this, stepDuration)
+                } else {
+                    shimejiParams.y = targetY.toInt()
+                    try {
+                        windowManager.updateViewLayout(shimejiView, shimejiParams)
+                        Log.d(TAG, "Climb animation ended, new Y: ${shimejiParams.y}")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error updating view after climb: ${e.message}")
                     }
                     isAnimating = false
-                }
-                override fun onAnimationRepeat(p0: Animation?) {}
-            })
 
-            shimejiView?.post {
-                shimejiAnimationView.startAnimation(animation)
+                    // Nếu chạm đất, thoát trạng thái leo và cho phép walk
+                    if (shimejiParams.y >= groundY) {
+                        isClimbing = false
+                        setAnimation("walk")
+                    } else if (shimejiParams.y <= topY) {
+                        setAnimation("walk") // Dừng ở đỉnh
+                    } else {
+                        setAnimation("climb")
+                    }
+                }
             }
         }
+
+        // Lật hướng nhân vật
+        shimejiAnimationView.scaleX = if (isLeftWall) 1f else -1f
+        Log.d(TAG, "Climb animation started, direction: ${if (moveY < 0) "up" else "down"}")
+        handler.post(climbRunnable)
     }
 
     override fun onDestroy() {
         Log.d(TAG, "Service onDestroy")
-        stopAutomaticMovement()
+        handler.removeCallbacks(movementRunnable)
         try {
             shimejiView?.let { windowManager.removeView(it) }
             Log.d(TAG, "ShimejiView removed from window")
