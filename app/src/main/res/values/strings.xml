@@ -1,3 +1,9 @@
 <resources>
-    <string name="app_name">shimeji_anime_clone</string>
+    <string name="app_name">Spine 2D Overlay</string>
+    <string name="overlay_permission_title">Cần quyền hiển thị overlay</string>
+    <string name="overlay_permission_message">Ứng dụng cần quyền hiển thị nội dung trên các ứng dụng khác. Vui lòng cấp quyền để tiếp tục.</string>
+    <string name="go_to_settings">Đi đến Cài đặt</string>
+    <string name="cancel">Hủy</string>
+    <string name="start_overlay">Bắt đầu Overlay</string>
+    <string name="stop_overlay">Dừng Overlay</string>
 </resources>

@@ -5,99 +5,66 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.widget.Button
-import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import android.widget.Button
 
 class MainActivity : AppCompatActivity() {
 
-    private val OVERLAY_PERMISSION_REQ_CODE = 1234
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        try {
-            setContentView(R.layout.activity_main)
-        } catch (e: Exception) {
-            Toast.makeText(this, "Lỗi tải giao diện: ${e.message}", Toast.LENGTH_LONG).show()
-            e.printStackTrace()
-            finish()
-            return
-        }
-
-        val startButton = findViewById<Button>(R.id.startButton)
-        val stopButton = findViewById<Button>(R.id.stopButton)
-
-        startButton.setOnClickListener {
-            if (checkOverlayPermission()) {
-                startShimejiService()
-            } else {
-                requestOverlayPermission()
+    private val overlayPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (Settings.canDrawOverlays(this)) {
+                    // Quyền đã được cấp, khởi chạy service
+                    startOverlayService()
+                } else {
+                    // Quyền chưa được cấp, thông báo cho người dùng
+                    // Toast.makeText(this, "Quyền overlay chưa được cấp", Toast.LENGTH_SHORT).show()
+                }
             }
         }
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main) // Giả sử bạn có layout cho MainActivity
+
+        // Nút để bắt đầu/dừng overlay (ví dụ)
+        val startButton = findViewById<Button>(R.id.button_start_overlay) // Thay ID phù hợp
+        startButton.setOnClickListener {
+            checkAndRequestOverlayPermission()
+        }
+
+        val stopButton = findViewById<Button>(R.id.button_stop_overlay) // Thay ID phù hợp
         stopButton.setOnClickListener {
-            stopShimejiService()
+            stopOverlayService()
         }
     }
 
-    private fun checkOverlayPermission(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Settings.canDrawOverlays(this)
-        } else {
-            true
-        }
-    }
-
-    private fun requestOverlayPermission() {
+    private fun checkAndRequestOverlayPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            try {
+            if (!Settings.canDrawOverlays(this)) {
                 val intent = Intent(
                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                     Uri.parse("package:$packageName")
                 )
-                startActivityForResult(intent, OVERLAY_PERMISSION_REQ_CODE)
-            } catch (e: Exception) {
-                Toast.makeText(this, "Không thể mở cài đặt quyền overlay", Toast.LENGTH_LONG).show()
-                e.printStackTrace()
-            }
-        }
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == OVERLAY_PERMISSION_REQ_CODE) {
-            if (checkOverlayPermission()) {
-                startShimejiService()
+                overlayPermissionLauncher.launch(intent)
             } else {
-                Toast.makeText(this, "Quyền hiển thị trên các ứng dụng khác bị từ chối", Toast.LENGTH_SHORT).show()
+                startOverlayService()
             }
+        } else {
+            startOverlayService() // Không cần quyền cho các phiên bản Android cũ hơn
         }
     }
 
-    private fun startShimejiService() {
-        try {
-            val intent = Intent(this, ShimejiService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
-            Toast.makeText(this, "Đã bắt đầu Shimeji", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            Toast.makeText(this, "Lỗi khi bắt đầu dịch vụ: ${e.message}", Toast.LENGTH_SHORT).show()
-            e.printStackTrace()
+    private fun startOverlayService() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            // Toast.makeText(this, "Quyền overlay chưa được cấp", Toast.LENGTH_SHORT).show()
+            return
         }
+        startService(Intent(this, OverlayService::class.java))
     }
 
-    private fun stopShimejiService() {
-        try {
-            val intent = Intent(this, ShimejiService::class.java)
-            stopService(intent)
-            Toast.makeText(this, "Đã dừng Shimeji", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            Toast.makeText(this, "Lỗi khi dừng dịch vụ: ${e.message}", Toast.LENGTH_SHORT).show()
-            e.printStackTrace()
-        }
+    private fun stopOverlayService() {
+        stopService(Intent(this, OverlayService::class.java))
     }
 }
