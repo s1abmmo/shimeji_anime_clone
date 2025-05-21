@@ -1,4 +1,4 @@
-package com.example.shimeji_anime_clone
+package com.example.anitama
 
 import android.app.Service
 import android.content.Context

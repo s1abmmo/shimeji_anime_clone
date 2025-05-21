@@ -5,15 +5,15 @@ plugins {
 }
 
 android {
-    namespace = "com.example.shimeji_anime_clone"
+    namespace = "com.example.anitama"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.shimeji_anime_clone"
+        applicationId = "com.example.anitama"
         minSdk = 24
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 5
+        versionName = "1.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -58,7 +58,12 @@ android {
 }
 
 dependencies {
-    implementation("com.google.android.material:material:1.12.0")
+    implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.activity.compose.v192)
+    implementation(libs.androidx.core.splashscreen)
+    implementation(libs.coil.compose)
+    implementation(libs.material)
+    implementation(libs.androidx.datastore.preferences)
 
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.core.ktx)

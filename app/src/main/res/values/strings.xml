@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Spine 2D Overlay</string>
+    <string name="app_name">Anitama</string>
     <string name="overlay_permission_title">Cần quyền hiển thị overlay</string>
     <string name="overlay_permission_message">Ứng dụng cần quyền hiển thị nội dung trên các ứng dụng khác. Vui lòng cấp quyền để tiếp tục.</string>
     <string name="go_to_settings">Đi đến Cài đặt</string>
