@@ -136,7 +136,8 @@ fun BottomNavigationBar(navController: NavController, currentDestination: String
             icon = {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_overlay), // Thay bằng icon overlay
-                    contentDescription = "Overlay"
+                    contentDescription = "Overlay",
+                    modifier = Modifier.size(32.dp)
                 )
             },
             label = { Text("Overlay") },
@@ -147,7 +148,8 @@ fun BottomNavigationBar(navController: NavController, currentDestination: String
             icon = {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_settings), // Thay bằng icon settings
-                    contentDescription = "Settings"
+                    contentDescription = "Settings",
+                    modifier = Modifier.size(32.dp)
                 )
             },
             label = { Text("Settings") },
