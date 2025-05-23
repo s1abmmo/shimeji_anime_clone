@@ -8,9 +8,13 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -31,6 +36,22 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.*
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -166,6 +187,7 @@ fun OverlayScreen(
     settingsRepository: SettingsRepository
 ) {
     var language by remember { mutableStateOf("Chưa chọn") }
+    var isOverlayActive by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         CoroutineScope(Dispatchers.Main).launch {
@@ -175,51 +197,98 @@ fun OverlayScreen(
         }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = "Overlay Control",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF1976D2)
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "Ngôn ngữ: $language",
-            style = MaterialTheme.typography.bodyLarge,
-            color = Color(0xFF424242)
-        )
-        Spacer(modifier = Modifier.height(32.dp))
-        Button(
-            onClick = onStartOverlay,
-            modifier = Modifier
-                .fillMaxWidth(0.8f)
-                .height(56.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2))
-        ) {
-            Text("Bắt đầu Overlay", fontSize = 16.sp, fontWeight = FontWeight.Medium)
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-        OutlinedButton(
-            onClick = onStopOverlay,
-            modifier = Modifier
-                .fillMaxWidth(0.8f)
-                .height(56.dp),
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(2.dp, Color(0xFF1976D2))
-        ) {
-            Text(
-                "Dừng Overlay",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFF1976D2)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFFFFB1B1), // Anime-style pink
+                        Color(0xFF87CEEB), // Sky blue
+                        Color(0xFFE6E6FA)  // Lavender
+                    ),
+                    start = Offset(0f, 0f),
+                    end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
+                )
             )
+            .padding(24.dp)
+    ) {
+        // Card với border gradient và bo góc 16dp
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.Center)
+                .clip(RoundedCornerShape(16.dp))
+                .border(
+                    width = 1.dp,
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFFE91E63), // Anime pink
+                            Color(0xFF0288D1), // Anime blue
+                            Color(0xFFAB47BC)  // Anime purple
+                        )
+                    ),
+                    shape = RoundedCornerShape(16.dp)
+                ),
+            shape = RoundedCornerShape(16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color.White.copy(alpha = 0.95f)
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Text "Cấp quyền"
+                Text(
+                    text = "Cấp quyền",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFF333333)
+                )
+
+                // Toggle Switch với hiệu ứng di chuyển
+                Box(
+                    modifier = Modifier
+                        .width(60.dp)
+                        .height(30.dp)
+                        .clip(RoundedCornerShape(15.dp))
+                        .background(
+                            if (isOverlayActive)
+                                Color(0xFFE91E63)
+                            else
+                                Color(0xFFE0E0E0)
+                        )
+                        .clickable {
+                            isOverlayActive = !isOverlayActive
+                            if (isOverlayActive) onStartOverlay() else onStopOverlay()
+                        }
+                        .padding(3.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                            .align(
+                                if (isOverlayActive)
+                                    Alignment.CenterEnd
+                                else
+                                    Alignment.CenterStart
+                            )
+                            .animateContentSize(
+                                animationSpec = tween(
+                                    durationMillis = 300,
+                                    easing = FastOutSlowInEasing
+                                )
+                            )
+                    )
+                }
+            }
         }
     }
 }
