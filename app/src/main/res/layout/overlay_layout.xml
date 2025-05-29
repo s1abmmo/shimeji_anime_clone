@@ -8,7 +8,7 @@
         android:layout_width="40dp"
         android:layout_height="80dp"
         android:src="@drawable/walk_frame_1"
-        android:scaleType="fitCenter"
+        android:scaleType="fitEnd"
         android:layout_gravity="bottom"
         />
 
