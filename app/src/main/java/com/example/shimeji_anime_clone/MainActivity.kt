@@ -59,7 +59,7 @@ class MainActivity : ComponentActivity() {
     private val settingsRepository by lazy { SettingsRepository(this) }
 
     // Thêm flag để track trạng thái service
-    private var isServiceRunning = false
+//    private var isServiceRunning = false
 
     private val overlayPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -102,8 +102,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startOverlayService() {
-        if (isServiceRunning) return
-        isServiceRunning = true
+//        if (isServiceRunning) return
+//        isServiceRunning = true
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
             return
         }
