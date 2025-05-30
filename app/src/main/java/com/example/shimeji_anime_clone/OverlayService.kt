@@ -22,44 +22,45 @@ class OverlayService : Service() {
     private lateinit var characterImage: ImageView
     private val handler = Handler(Looper.getMainLooper())
 
-    // Flag để tránh setupOverlay bị gọi lại
-//    private var isOverlaySetup = false
-    private var initYcharacter = false;
+    // Flags
+    private var initYcharacter = false
 
-    // Tốc độ
-    private val MOVE_SPEED = 20 // Tốc độ di chuyển (pixel)
-    private val ANIMATION_SPEED = 250L // Tốc độ đổi hình (ms)
+    // Constants - Tối ưu: Đặt tốc độ thành companion object
+    companion object {
+        private const val MOVE_SPEED = 20
+        private const val ANIMATION_SPEED = 250L
+        private const val MIN_DISTANCE = 850
+        private const val MAX_DISTANCE = 1000
+        private const val DELAY_BEFORE_NEW_DISTANCE = 500L
+    }
 
-    // Kích thước
+    // Screen and character dimensions
     private var screenWidth = 0
     private var screenHeight = 0
     private var characterWidth = 0
     private var characterHeight = 0
 
-    // Di chuyển
-    private var remainingDistance = 0 // Khoảng cách còn lại cần di chuyển
-    private var moveRight = true // Hướng di chuyển: true = phải, false = trái
-    private var facingRight = true // Hướng mặt
-    private var isClimbing = false // Đang leo tường
-    private var climbingUp = true // Hướng leo: true = lên, false = xuống
-    private var rightWall = false //true = tường phải, false = tường trái
+    // Movement state
+    private var remainingDistance = 0
+    private var moveRight = true
+    private var facingRight = true
+    private var isClimbing = false
+    private var climbingUp = true
+    private var rightWall = false
 
-    // Hình ảnh đi bộ và leo
+    // Animation frames
     private val walkFrames = listOf(R.drawable.walk_frame_1, R.drawable.walk_frame_2)
-    private val climbFrames =
-        listOf(R.drawable.walk_frame_1, R.drawable.walk_frame_2) // Có thể thay bằng hình leo riêng
-    private var currentFrame = 0 // Hình hiện tại
+    private val climbFrames = listOf(R.drawable.walk_frame_1, R.drawable.walk_frame_2)
+    private var currentFrame = 0
 
-    private var count = 0
-
-//    private var currentYPosition = 0 // Biến lưu trữ vị trí y hiện tại
-
-    // Cập nhật di chuyển và hình ảnh
+    // Tối ưu: Tách riêng logic di chuyển và animation
     private val updateRunnable = object : Runnable {
         override fun run() {
-            moveCharacter() // Di chuyển nhân vật
-            updateAnimation() // Cập nhật hình ảnh
-            handler.postDelayed(this, ANIMATION_SPEED) // Lặp lại
+            if (overlayView != null) {
+                moveCharacter()
+                updateAnimation()
+                handler.postDelayed(this, ANIMATION_SPEED)
+            }
         }
     }
 
@@ -67,16 +68,13 @@ class OverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-//        if (!isOverlaySetup) {
-        setupOverlay() // Tạo nhân vật
-//        }
-        handler.postDelayed({ setNewDistance() }, 500) // Bắt đầu di chuyển
+        setupOverlay()
+        handler.postDelayed({ setNewDistance() }, DELAY_BEFORE_NEW_DISTANCE)
     }
 
-    // Tạo nhân vật trên màn hình
     private fun setupOverlay() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        getScreenSize() // Lấy kích thước màn hình
+        getScreenSize()
 
         val inflater = getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
         overlayView = inflater.inflate(R.layout.overlay_layout, null)
@@ -84,7 +82,6 @@ class OverlayService : Service() {
         overlayView?.let { view ->
             characterImage = view.findViewById(R.id.character_image_view)
             characterImage.setImageResource(R.drawable.walk_frame_1)
-//            view.setBackgroundColor(0xFFFF0000.toInt()) // Màu đỏ
 
             val layoutFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -98,196 +95,171 @@ class OverlayService : Service() {
                 layoutFlag,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
                 PixelFormat.TRANSLUCENT
-            )
-
-            params.gravity = Gravity.TOP or Gravity.START
-            params.x = screenWidth / 2 // Ở giữa
-            params.y = screenHeight - 40 // Tạm đặt sát đáy (40dp)
-
-            windowManager.addView(view, params)
-//            isOverlaySetup = true // Đánh dấu đã setup xong
-
-            // Lấy kích thước nhân vật và đặt sát đáy
-            view.viewTreeObserver.addOnGlobalLayoutListener {
-                characterWidth = view.width
-                characterHeight = view.height
-//                println("characterWidth $characterWidth characterHeight $characterHeight")
-                val layoutParams = view.layoutParams as WindowManager.LayoutParams
-                if (!initYcharacter) {
-                    initYcharacter = true
-//                    currentYPosition = screenHeight - characterHeight
-                    layoutParams.y = screenHeight - characterHeight // Đặt sát đáy
-                }
-                windowManager.updateViewLayout(view, layoutParams)
-                view.viewTreeObserver.removeOnGlobalLayoutListener { }
+            ).apply {
+                gravity = Gravity.TOP or Gravity.START
+                x = screenWidth / 2
+                y = screenHeight - 40
             }
 
-            handler.post(updateRunnable) // Bắt đầu cập nhật
+            windowManager.addView(view, params)
+
+            // Tối ưu: Sử dụng ViewTreeObserver một cách an toàn hơn
+            view.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+                override fun onGlobalLayout() {
+                    characterWidth = view.width
+                    characterHeight = view.height
+
+                    if (!initYcharacter && characterHeight > 0) {
+                        initYcharacter = true
+                        val layoutParams = view.layoutParams as WindowManager.LayoutParams
+                        layoutParams.y = screenHeight - characterHeight
+                        windowManager.updateViewLayout(view, layoutParams)
+
+                        // Bắt đầu animation sau khi đã setup xong
+                        handler.post(updateRunnable)
+                    }
+
+                    // Remove listener để tránh gọi lại không cần thiết
+                    view.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                }
+            })
         } ?: run {
-            stopSelf() // Dừng nếu overlayView null
+            stopSelf()
         }
     }
 
-    // Lấy kích thước màn hình
     private fun getScreenSize() {
         val displayMetrics = resources.displayMetrics
         screenWidth = displayMetrics.widthPixels
         screenHeight = displayMetrics.heightPixels
     }
 
-    // Đặt khoảng cách và hướng di chuyển mới
     private fun setNewDistance() {
-        remainingDistance = Random.nextInt(850, 1000) // Khoảng cách 100-500 pixel
-        moveRight = Random.nextBoolean() // Random hướng di chuyển
-        println("set new remainingDistance $remainingDistance moveRight $moveRight")
-
-//        // Cập nhật hướng mặt
-//        facingRight = moveRight
-//        characterImage.scaleX = if (facingRight) 1f else -1f
+        remainingDistance = Random.nextInt(MIN_DISTANCE, MAX_DISTANCE)
+        moveRight = Random.nextBoolean()
     }
 
-    // Di chuyển nhân vật theo logic distance-based
+    // Tối ưu: Tách logic di chuyển thành các function nhỏ hơn
     private fun moveCharacter() {
         overlayView?.let { view ->
-
-            count++
-//            println("moveCharacter count $count currentYPosition $currentYPosition")
-
             val layoutParams = view.layoutParams as WindowManager.LayoutParams
-            val currentX = layoutParams.x
-            val currentY = layoutParams.y
 
-            // Nếu hết khoảng cách, đặt khoảng cách mới
             if (remainingDistance <= 0) {
-                handler.postDelayed({ setNewDistance() }, 500)
+                handler.postDelayed({ setNewDistance() }, DELAY_BEFORE_NEW_DISTANCE)
                 return
             }
 
-            println("isClimbing $isClimbing")
-
             if (isClimbing) {
-
-                // Đang leo tường
-                val moveDistance = minOf(MOVE_SPEED, remainingDistance)
-                climbingUp = climbingUp && ((moveRight && rightWall) || (!moveRight && !rightWall))
-                val newY = if (climbingUp) currentY - moveDistance else currentY + moveDistance
-                println("moveDistance $moveDistance currentY $currentY newY $newY")
-
-                // Kiểm tra chạm trần hoặc chạm đất
-                if (newY <= 0) {
-                    // Chạm trần - chuyển sang leo xuống
-                    climbingUp = false
-//                    currentYPosition = 0
-//                    println("set currentYPosition")
-//                    layoutParams.y = currentYPosition
-                    val excessDistance = moveDistance - (currentY - 0)
-                    remainingDistance -= (moveDistance - excessDistance)
-                    if (excessDistance > 0) {
-                        layoutParams.y = excessDistance
-                        remainingDistance -= excessDistance
-                    }
-                }
-
-                if (newY >= screenHeight - characterHeight && !climbingUp) {
-                    // Chạm đất - kết thúc leo, chuyển về đi bộ
-//                    currentYPosition = screenHeight - characterHeight
-//                    println("set currentYPosition $currentYPosition")
-                    layoutParams.y = screenHeight - characterHeight
-                    remainingDistance -= (moveDistance - (newY - (screenHeight - characterHeight)))
-                    isClimbing = false
-                } else {// Leo bình thường
-//                    currentYPosition = newY
-//                    println("set currentYPosition $currentYPosition")
-                    layoutParams.y = newY
-                    remainingDistance -= moveDistance
-                }
+                handleClimbing(layoutParams)
             } else {
-                // Đi bộ bình thường
-                val moveDistance = minOf(MOVE_SPEED, remainingDistance)
-                val newX = if (moveRight) currentX + moveDistance else currentX - moveDistance
-
-                // Kiểm tra chạm tường
-                if (newX <= 0) {
-                    // Chạm tường trái
-                    layoutParams.x = 0
-                    val wallHitDistance = currentX - 0
-                    val excessDistance = moveDistance - wallHitDistance
-                    remainingDistance -= wallHitDistance
-
-                    if (excessDistance > 0 && remainingDistance > 0) {
-                        // Chuyển sang leo tường
-                        isClimbing = true
-                        climbingUp = true
-                        facingRight = false // Mặt vào tường trái
-                        characterImage.scaleX = -1f
-                        rightWall = false
-
-                        // Leo lên với khoảng cách dư
-                        val newY = currentY - excessDistance
-                        if (newY >= 0) {
-                            layoutParams.y = newY
-                            remainingDistance -= excessDistance
-                        } else {
-                            layoutParams.y = 0
-                            climbingUp = false
-                            remainingDistance -= (excessDistance - (0 - newY))
-                        }
-                    }
-
-                }
-
-                if (newX >= screenWidth - characterWidth) {
-                    // Chạm tường phải
-                    layoutParams.x = screenWidth - characterWidth
-                    val wallHitDistance = (screenWidth - characterWidth) - currentX
-                    val excessDistance = moveDistance - wallHitDistance
-                    remainingDistance -= wallHitDistance
-
-                    if (excessDistance > 0 && remainingDistance > 0) {
-                        // Chuyển sang leo tường
-                        isClimbing = true
-                        climbingUp = true
-                        facingRight = true // Mặt vào tường phải
-                        characterImage.scaleX = 1f
-                        rightWall = true
-
-                        // Leo lên với khoảng cách dư
-                        val newY = currentY - excessDistance
-                        if (newY >= 0) {
-                            layoutParams.y = newY
-                            remainingDistance -= excessDistance
-                        } else {
-                            layoutParams.y = 0
-                            climbingUp = false
-                            remainingDistance -= (excessDistance - (0 - newY))
-                        }
-                    }
-
-                } else {
-                    // Di chuyển bình thường
-                    layoutParams.x = newX
-                    remainingDistance -= moveDistance
-
-                    facingRight = moveRight
-                    characterImage.scaleX = if (facingRight) 1f else -1f
-
-                }
-
-                // Luôn ở đáy khi đi bộ (trừ khi đang leo)
-                if (!isClimbing) {
-//                    currentYPosition = screenHeight - characterHeight
-//                    println("set currentYPosition $currentYPosition")
-                    layoutParams.y = screenHeight - characterHeight
-                }
+                handleWalking(layoutParams)
             }
-
-
 
             windowManager.updateViewLayout(view, layoutParams)
         }
     }
 
-    // Cập nhật hình ảnh đi bộ/leo
+    private fun handleClimbing(layoutParams: WindowManager.LayoutParams) {
+        val currentY = layoutParams.y
+        val moveDistance = minOf(MOVE_SPEED, remainingDistance)
+
+        // Xác định hướng leo dựa trên vị trí tường
+        climbingUp = climbingUp && ((moveRight && rightWall) || (!moveRight && !rightWall))
+        val newY = if (climbingUp) currentY - moveDistance else currentY + moveDistance
+
+        when {
+            newY <= 0 -> {
+                // Chạm trần - chuyển sang leo xuống
+                climbingUp = false
+                val excessDistance = moveDistance - currentY
+                layoutParams.y = if (excessDistance > 0) excessDistance else 0
+                remainingDistance -= moveDistance
+            }
+            newY >= screenHeight - characterHeight && !climbingUp -> {
+                // Chạm đất - kết thúc leo
+                layoutParams.y = screenHeight - characterHeight
+                remainingDistance -= (moveDistance - (newY - (screenHeight - characterHeight)).coerceAtLeast(0))
+                isClimbing = false
+            }
+            else -> {
+                // Leo bình thường
+                layoutParams.y = newY
+                remainingDistance -= moveDistance
+            }
+        }
+    }
+
+    private fun handleWalking(layoutParams: WindowManager.LayoutParams) {
+        val currentX = layoutParams.x
+        val currentY = layoutParams.y
+        val moveDistance = minOf(MOVE_SPEED, remainingDistance)
+        val newX = if (moveRight) currentX + moveDistance else currentX - moveDistance
+
+        when {
+            newX <= 0 -> {
+                // Chạm tường trái
+                handleWallHit(layoutParams, currentX, currentY, 0, false, moveDistance)
+            }
+            newX >= screenWidth - characterWidth -> {
+                // Chạm tường phải
+                handleWallHit(layoutParams, currentX, currentY, screenWidth - characterWidth, true, moveDistance)
+            }
+            else -> {
+                // Di chuyển bình thường
+                layoutParams.x = newX
+                remainingDistance -= moveDistance
+                updateCharacterDirection()
+            }
+        }
+
+        // Luôn ở đáy khi đi bộ
+        if (!isClimbing) {
+            layoutParams.y = screenHeight - characterHeight
+        }
+    }
+
+    private fun handleWallHit(
+        layoutParams: WindowManager.LayoutParams,
+        currentX: Int,
+        currentY: Int,
+        wallX: Int,
+        isRightWall: Boolean,
+        moveDistance: Int
+    ) {
+        layoutParams.x = wallX
+        val wallHitDistance = if (isRightWall) wallX - currentX else currentX - wallX
+        val excessDistance = moveDistance - wallHitDistance
+        remainingDistance -= wallHitDistance
+
+        if (excessDistance > 0 && remainingDistance > 0) {
+            // Chuyển sang leo tường
+            startClimbing(layoutParams, currentY, excessDistance, isRightWall)
+        }
+    }
+
+    private fun startClimbing(layoutParams: WindowManager.LayoutParams, currentY: Int, excessDistance: Int, isRightWall: Boolean) {
+        isClimbing = true
+        climbingUp = true
+        rightWall = isRightWall
+        facingRight = isRightWall
+        characterImage.scaleX = if (facingRight) 1f else -1f
+
+        val newY = currentY - excessDistance
+        if (newY >= 0) {
+            layoutParams.y = newY
+            remainingDistance -= excessDistance
+        } else {
+            layoutParams.y = 0
+            climbingUp = false
+            remainingDistance -= (excessDistance - (0 - newY))
+        }
+    }
+
+    private fun updateCharacterDirection() {
+        facingRight = moveRight
+        characterImage.scaleX = if (facingRight) 1f else -1f
+    }
+
     private fun updateAnimation() {
         val frames = if (isClimbing) climbFrames else walkFrames
         currentFrame = (currentFrame + 1) % frames.size
@@ -298,7 +270,11 @@ class OverlayService : Service() {
         super.onDestroy()
         handler.removeCallbacks(updateRunnable)
         overlayView?.let {
-            windowManager.removeView(it)
+            try {
+                windowManager.removeView(it)
+            } catch (e: Exception) {
+                // Handle case where view might already be removed
+            }
             overlayView = null
         }
     }
