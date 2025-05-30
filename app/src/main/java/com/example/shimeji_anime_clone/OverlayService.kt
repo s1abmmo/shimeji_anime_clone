@@ -10,6 +10,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.ImageView
@@ -25,10 +26,12 @@ class OverlayService : Service() {
     // Flags
     private var initYcharacter = false
 
-    // Constants - Tối ưu: Đặt tốc độ thành companion object
+    // Constants
     companion object {
         private const val MOVE_SPEED = 20
         private const val ANIMATION_SPEED = 250L
+        private const val ANIMATION_SPEED_FALLING = 25L
+        private const val FALL_SPEED = 500
         private const val MIN_DISTANCE = 850
         private const val MAX_DISTANCE = 1000
         private const val DELAY_BEFORE_NEW_DISTANCE = 500L
@@ -48,18 +51,40 @@ class OverlayService : Service() {
     private var climbingUp = true
     private var rightWall = false
 
+    // Drag & Drop state
+    private var isDragging = false
+    private var isFalling = false
+    private var initialTouchX = 0f
+    private var initialTouchY = 0f
+    private var initialX = 0
+    private var initialY = 0
+
     // Animation frames
     private val walkFrames = listOf(R.drawable.walk_frame_1, R.drawable.walk_frame_2)
     private val climbFrames = listOf(R.drawable.walk_frame_1, R.drawable.walk_frame_2)
+    private val dragFrames =
+        listOf(R.drawable.walk_frame_1) // Animation khi drag - có thể thay bằng hình riêng
+    private val fallFrames =
+        listOf(R.drawable.walk_frame_2) // Animation khi rơi - có thể thay bằng hình riêng
     private var currentFrame = 0
 
-    // Tối ưu: Tách riêng logic di chuyển và animation
     private val updateRunnable = object : Runnable {
         override fun run() {
             if (overlayView != null) {
-                moveCharacter()
-                updateAnimation()
-                handler.postDelayed(this, ANIMATION_SPEED)
+                when {
+                    isFalling -> {
+                        handleFalling()
+                    }
+
+                    !isDragging -> {
+                        moveCharacter()
+                        updateAnimation()
+                    }
+
+                    else -> updateDragAnimation()
+                }
+                if (!isFalling) handler.postDelayed(this, ANIMATION_SPEED)
+                else handler.postDelayed(this, ANIMATION_SPEED_FALLING)
             }
         }
     }
@@ -102,9 +127,10 @@ class OverlayService : Service() {
             }
 
             windowManager.addView(view, params)
+            setupTouchListener(view)
 
-            // Tối ưu: Sử dụng ViewTreeObserver một cách an toàn hơn
-            view.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+            view.viewTreeObserver.addOnGlobalLayoutListener(object :
+                android.view.ViewTreeObserver.OnGlobalLayoutListener {
                 override fun onGlobalLayout() {
                     characterWidth = view.width
                     characterHeight = view.height
@@ -115,17 +141,129 @@ class OverlayService : Service() {
                         layoutParams.y = screenHeight - characterHeight
                         windowManager.updateViewLayout(view, layoutParams)
 
-                        // Bắt đầu animation sau khi đã setup xong
                         handler.post(updateRunnable)
                     }
 
-                    // Remove listener để tránh gọi lại không cần thiết
                     view.viewTreeObserver.removeOnGlobalLayoutListener(this)
                 }
             })
         } ?: run {
             stopSelf()
         }
+    }
+
+    private fun setupTouchListener(view: View) {
+        view.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    handleTouchDown(event)
+                    true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    handleTouchMove(event)
+                    true
+                }
+
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    handleTouchUp()
+                    true
+                }
+
+                else -> false
+            }
+        }
+    }
+
+    private fun handleTouchDown(event: MotionEvent) {
+        isDragging = true
+        isFalling = false
+        isClimbing = false
+
+        initialTouchX = event.rawX
+        initialTouchY = event.rawY
+
+        overlayView?.let { view ->
+            val layoutParams = view.layoutParams as WindowManager.LayoutParams
+            initialX = layoutParams.x
+            initialY = layoutParams.y
+        }
+
+        // Cập nhật params để cho phép touch
+        overlayView?.let { view ->
+            val layoutParams = view.layoutParams as WindowManager.LayoutParams
+            layoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+            windowManager.updateViewLayout(view, layoutParams)
+        }
+    }
+
+    private fun handleTouchMove(event: MotionEvent) {
+        if (!isDragging) return
+
+        val deltaX = (event.rawX - initialTouchX).toInt()
+        val deltaY = (event.rawY - initialTouchY).toInt()
+
+        overlayView?.let { view ->
+            val layoutParams = view.layoutParams as WindowManager.LayoutParams
+            val newX = (initialX + deltaX).coerceIn(0, screenWidth - characterWidth)
+            val newY = (initialY + deltaY).coerceIn(0, screenHeight - characterHeight)
+
+            layoutParams.x = newX
+            layoutParams.y = newY
+
+            windowManager.updateViewLayout(view, layoutParams)
+        }
+    }
+
+    private fun handleTouchUp() {
+        isDragging = false
+
+        // Khôi phục params về trạng thái ban đầu
+        overlayView?.let { view ->
+            val layoutParams = view.layoutParams as WindowManager.LayoutParams
+            layoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+
+            // Kiểm tra xem có cần rơi xuống không
+            if (layoutParams.y < screenHeight - characterHeight) {
+                isFalling = true
+            } else {
+                // Nếu đã ở đáy, tiếp tục di chuyển bình thường
+                resetMovementState()
+            }
+
+            windowManager.updateViewLayout(view, layoutParams)
+        }
+    }
+
+    private fun handleFalling() {
+        overlayView?.let { view ->
+            val layoutParams = view.layoutParams as WindowManager.LayoutParams
+            val currentY = layoutParams.y
+            val newY = currentY + FALL_SPEED
+
+            if (newY >= screenHeight - characterHeight) {
+                // Đã chạm đáy
+                layoutParams.y = screenHeight - characterHeight
+                isFalling = false
+                resetMovementState()
+            } else {
+                // Tiếp tục rơi
+                layoutParams.y = newY
+            }
+
+            windowManager.updateViewLayout(view, layoutParams)
+        }
+
+        // Cập nhật animation rơi
+        updateFallAnimation()
+    }
+
+    private fun resetMovementState() {
+        // Reset lại trạng thái di chuyển sau khi thả
+        isClimbing = false
+        climbingUp = true
+        handler.postDelayed({ setNewDistance() }, DELAY_BEFORE_NEW_DISTANCE)
     }
 
     private fun getScreenSize() {
@@ -135,12 +273,15 @@ class OverlayService : Service() {
     }
 
     private fun setNewDistance() {
-        remainingDistance = Random.nextInt(MIN_DISTANCE, MAX_DISTANCE)
-        moveRight = Random.nextBoolean()
+        if (!isDragging && !isFalling) {
+            remainingDistance = Random.nextInt(MIN_DISTANCE, MAX_DISTANCE)
+            moveRight = Random.nextBoolean()
+        }
     }
 
-    // Tối ưu: Tách logic di chuyển thành các function nhỏ hơn
     private fun moveCharacter() {
+        if (isDragging || isFalling) return
+
         overlayView?.let { view ->
             val layoutParams = view.layoutParams as WindowManager.LayoutParams
 
@@ -163,26 +304,26 @@ class OverlayService : Service() {
         val currentY = layoutParams.y
         val moveDistance = minOf(MOVE_SPEED, remainingDistance)
 
-        // Xác định hướng leo dựa trên vị trí tường
         climbingUp = climbingUp && ((moveRight && rightWall) || (!moveRight && !rightWall))
         val newY = if (climbingUp) currentY - moveDistance else currentY + moveDistance
 
         when {
             newY <= 0 -> {
-                // Chạm trần - chuyển sang leo xuống
                 climbingUp = false
                 val excessDistance = moveDistance - currentY
                 layoutParams.y = if (excessDistance > 0) excessDistance else 0
                 remainingDistance -= moveDistance
             }
+
             newY >= screenHeight - characterHeight && !climbingUp -> {
-                // Chạm đất - kết thúc leo
                 layoutParams.y = screenHeight - characterHeight
-                remainingDistance -= (moveDistance - (newY - (screenHeight - characterHeight)).coerceAtLeast(0))
+                remainingDistance -= (moveDistance - (newY - (screenHeight - characterHeight)).coerceAtLeast(
+                    0
+                ))
                 isClimbing = false
             }
+
             else -> {
-                // Leo bình thường
                 layoutParams.y = newY
                 remainingDistance -= moveDistance
             }
@@ -197,22 +338,27 @@ class OverlayService : Service() {
 
         when {
             newX <= 0 -> {
-                // Chạm tường trái
                 handleWallHit(layoutParams, currentX, currentY, 0, false, moveDistance)
             }
+
             newX >= screenWidth - characterWidth -> {
-                // Chạm tường phải
-                handleWallHit(layoutParams, currentX, currentY, screenWidth - characterWidth, true, moveDistance)
+                handleWallHit(
+                    layoutParams,
+                    currentX,
+                    currentY,
+                    screenWidth - characterWidth,
+                    true,
+                    moveDistance
+                )
             }
+
             else -> {
-                // Di chuyển bình thường
                 layoutParams.x = newX
                 remainingDistance -= moveDistance
                 updateCharacterDirection()
             }
         }
 
-        // Luôn ở đáy khi đi bộ
         if (!isClimbing) {
             layoutParams.y = screenHeight - characterHeight
         }
@@ -232,12 +378,16 @@ class OverlayService : Service() {
         remainingDistance -= wallHitDistance
 
         if (excessDistance > 0 && remainingDistance > 0) {
-            // Chuyển sang leo tường
             startClimbing(layoutParams, currentY, excessDistance, isRightWall)
         }
     }
 
-    private fun startClimbing(layoutParams: WindowManager.LayoutParams, currentY: Int, excessDistance: Int, isRightWall: Boolean) {
+    private fun startClimbing(
+        layoutParams: WindowManager.LayoutParams,
+        currentY: Int,
+        excessDistance: Int,
+        isRightWall: Boolean
+    ) {
         isClimbing = true
         climbingUp = true
         rightWall = isRightWall
@@ -264,6 +414,18 @@ class OverlayService : Service() {
         val frames = if (isClimbing) climbFrames else walkFrames
         currentFrame = (currentFrame + 1) % frames.size
         characterImage.setImageResource(frames[currentFrame])
+    }
+
+    private fun updateDragAnimation() {
+        // Animation khi đang drag
+        currentFrame = (currentFrame + 1) % dragFrames.size
+        characterImage.setImageResource(dragFrames[currentFrame])
+    }
+
+    private fun updateFallAnimation() {
+        // Animation khi đang rơi
+        currentFrame = (currentFrame + 1) % fallFrames.size
+        characterImage.setImageResource(fallFrames[currentFrame])
     }
 
     override fun onDestroy() {
