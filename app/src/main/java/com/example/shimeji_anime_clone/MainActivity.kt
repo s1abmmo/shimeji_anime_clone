@@ -9,11 +9,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -29,6 +30,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -39,35 +42,56 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.runtime.*
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
+
+// Data classes cho animation
+data class AnimationPack(
+    val name: String,
+    val animations: List<Animation>
+)
+
+data class Animation(
+    val name: String,
+    val images: List<String>
+)
+
+// Hàm mock dữ liệu
+fun getMockAnimationPacks(): List<AnimationPack> {
+    return listOf(
+        AnimationPack(
+            name = "Pack 1",
+            animations = (1..6).map { i ->
+                Animation(
+                    name = "Animation $i",
+                    images = (1..3).map { j -> "url_pack1_anim${i}_img$j.png" }
+                )
+            }
+        ),
+        AnimationPack(
+            name = "Pack 2",
+            animations = (1..6).map { i ->
+                Animation(
+                    name = "Animation $i",
+                    images = (1..3).map { j -> "url_pack2_anim${i}_img$j.png" }
+                )
+            }
+        )
+    )
+}
+
+// ViewModel để quản lý dữ liệu animation
+class AnimationViewModel : ViewModel() {
+    val animationPacks = getMockAnimationPacks()
+}
 
 class MainActivity : ComponentActivity() {
     private val settingsRepository by lazy { SettingsRepository(this) }
-
-    // Thêm flag để track trạng thái service
-//    private var isServiceRunning = false
 
     private val overlayPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 if (Settings.canDrawOverlays(this)) {
                     startOverlayService()
-                } else {
-                    // Có thể thêm thông báo nếu cần
                 }
             }
         }
@@ -102,8 +126,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startOverlayService() {
-//        if (isServiceRunning) return
-//        isServiceRunning = true
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
             return
         }
@@ -141,10 +163,17 @@ fun MainScreen(
             modifier = Modifier.padding(innerPadding)
         ) {
             composable("overlay") {
-                OverlayScreen(onStartOverlay, onStopOverlay, settingsRepository)
+                OverlayScreen(onStartOverlay, onStopOverlay, settingsRepository, navController)
             }
             composable("settings") {
                 SettingsScreen()
+            }
+            composable("animationPacks") {
+                AnimationPacksScreen(navController)
+            }
+            composable("animationDetails/{packName}") { backStackEntry ->
+                val packName = backStackEntry.arguments?.getString("packName")
+                AnimationDetailsScreen(navController, packName)
             }
         }
     }
@@ -161,7 +190,7 @@ fun BottomNavigationBar(navController: NavController, currentDestination: String
         NavigationBarItem(
             icon = {
                 Icon(
-                    painter = painterResource(id = R.drawable.ic_overlay), // Thay bằng icon overlay
+                    painter = painterResource(id = R.drawable.ic_overlay),
                     contentDescription = "Overlay",
                     modifier = Modifier.size(32.dp)
                 )
@@ -173,7 +202,7 @@ fun BottomNavigationBar(navController: NavController, currentDestination: String
         NavigationBarItem(
             icon = {
                 Icon(
-                    painter = painterResource(id = R.drawable.ic_settings), // Thay bằng icon settings
+                    painter = painterResource(id = R.drawable.ic_settings),
                     contentDescription = "Settings",
                     modifier = Modifier.size(32.dp)
                 )
@@ -189,7 +218,8 @@ fun BottomNavigationBar(navController: NavController, currentDestination: String
 fun OverlayScreen(
     onStartOverlay: () -> Unit,
     onStopOverlay: () -> Unit,
-    settingsRepository: SettingsRepository
+    settingsRepository: SettingsRepository,
+    navController: NavController
 ) {
     var language by remember { mutableStateOf("Chưa chọn") }
     var isOverlayActive by remember { mutableStateOf(false) }
@@ -208,9 +238,9 @@ fun OverlayScreen(
             .background(
                 Brush.linearGradient(
                     colors = listOf(
-                        Color(0xFFFFB1B1), // Anime-style pink
-                        Color(0xFF87CEEB), // Sky blue
-                        Color(0xFFE6E6FA)  // Lavender
+                        Color(0xFFFFB1B1),
+                        Color(0xFF87CEEB),
+                        Color(0xFFE6E6FA)
                     ),
                     start = Offset(0f, 0f),
                     end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
@@ -218,83 +248,151 @@ fun OverlayScreen(
             )
             .padding(24.dp)
     ) {
-        // Card với border gradient và bo góc 16dp
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.Center)
-                .clip(RoundedCornerShape(16.dp))
-                .border(
-                    width = 1.dp,
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color(0xFFE91E63), // Anime pink
-                            Color(0xFF0288D1), // Anime blue
-                            Color(0xFFAB47BC)  // Anime purple
-                        )
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                ),
-            shape = RoundedCornerShape(16.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = Color.White.copy(alpha = 0.95f)
-            )
+        Column(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Row(
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                // Text "Cấp quyền"
-                Text(
-                    text = "Cấp quyền",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF333333)
+                    .clip(RoundedCornerShape(16.dp))
+                    .border(
+                        width = 1.dp,
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFFE91E63),
+                                Color(0xFF0288D1),
+                                Color(0xFFAB47BC)
+                            )
+                        ),
+                        shape = RoundedCornerShape(16.dp)
+                    ),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.White.copy(alpha = 0.95f)
                 )
-
-                // Toggle Switch với hiệu ứng di chuyển
-                Box(
+            ) {
+                Row(
                     modifier = Modifier
-                        .width(60.dp)
-                        .height(30.dp)
-                        .clip(RoundedCornerShape(15.dp))
-                        .background(
-                            if (isOverlayActive)
-                                Color(0xFFE91E63)
-                            else
-                                Color(0xFFE0E0E0)
-                        )
-                        .clickable {
-                            isOverlayActive = !isOverlayActive
-                            if (isOverlayActive) onStartOverlay() else onStopOverlay()
-                        }
-                        .padding(3.dp)
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
+                    Text(
+                        text = "Cấp quyền",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF333333)
+                    )
                     Box(
                         modifier = Modifier
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .background(Color.White)
-                            .align(
-                                if (isOverlayActive)
-                                    Alignment.CenterEnd
-                                else
-                                    Alignment.CenterStart
+                            .width(60.dp)
+                            .height(30.dp)
+                            .clip(RoundedCornerShape(15.dp))
+                            .background(
+                                if (isOverlayActive) Color(0xFFE91E63) else Color(0xFFE0E0E0)
                             )
-                            .animateContentSize(
-                                animationSpec = tween(
-                                    durationMillis = 300,
-                                    easing = FastOutSlowInEasing
+                            .clickable {
+                                isOverlayActive = !isOverlayActive
+                                if (isOverlayActive) onStartOverlay() else onStopOverlay()
+                            }
+                            .padding(3.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(Color.White)
+                                .align(if (isOverlayActive) Alignment.CenterEnd else Alignment.CenterStart)
+                                .animateContentSize(
+                                    animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
                                 )
-                            )
-                    )
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = { navController.navigate("animationPacks") },
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE91E63))
+            ) {
+                Text("Thêm", color = Color.White)
+            }
+        }
+    }
+}
+
+@Composable
+fun AnimationPacksScreen(navController: NavController) {
+    val viewModel: AnimationViewModel = viewModel()
+    val packs = viewModel.animationPacks
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        items(packs) { pack ->
+            Text(
+                text = pack.name,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { navController.navigate("animationDetails/${pack.name}") }
+                    .padding(16.dp),
+                style = MaterialTheme.typography.bodyLarge
+            )
+        }
+    }
+}
+
+@Composable
+fun AnimationDetailsScreen(navController: NavController, packName: String?) {
+    val viewModel: AnimationViewModel = viewModel()
+    val pack = viewModel.animationPacks.find { it.name == packName }
+
+    if (pack != null) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
+            Text(
+                text = "Pack: ${pack.name}",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            LazyColumn {
+                items(pack.animations) { animation ->
+                    Column(
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = animation.name,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Row {
+                            animation.images.forEach { imageUrl ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(100.dp)
+                                        .background(Color.Gray)
+                                        .padding(4.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
+    } else {
+        Text(
+            text = "Pack không tìm thấy",
+            modifier = Modifier.padding(16.dp)
+        )
     }
 }
 
