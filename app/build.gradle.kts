@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.anitama"
+    namespace = "space.anitama.anitama"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.anitama"
+        applicationId = "space.anitama.anitama"
         minSdk = 24
         targetSdk = 35
         versionCode = 7
@@ -58,6 +58,8 @@ android {
 }
 
 dependencies {
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.okhttp)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.activity.compose.v192)
     implementation(libs.androidx.core.splashscreen)

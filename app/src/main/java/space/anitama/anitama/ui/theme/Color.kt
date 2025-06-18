@@ -1,4 +1,4 @@
-package com.example.shimeji_anime_clone.ui.theme
+package com.example.anitama.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

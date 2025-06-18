@@ -1,4 +1,4 @@
-package com.example.shimeji_anime_clone
+package com.example.anitama
 
 import org.junit.Test
 

@@ -1,4 +1,4 @@
-package com.example.anitama
+package space.anitama.anitama.data.repository
 
 import android.content.Context
 import androidx.datastore.core.DataStore

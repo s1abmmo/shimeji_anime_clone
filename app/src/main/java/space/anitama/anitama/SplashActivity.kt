@@ -1,4 +1,4 @@
-package com.example.anitama
+package space.anitama.anitama
 
 import android.content.Intent
 import android.os.Bundle
@@ -9,6 +9,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import space.anitama.anitama.ui.MainActivity
+import space.anitama.anitama.data.repository.SettingsRepository
 
 class SplashActivity : ComponentActivity() {
     private val settingsRepository by lazy { SettingsRepository(this) }

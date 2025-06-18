@@ -1,4 +1,4 @@
-package com.example.anitama
+package space.anitama.anitama.ui.screens
 
 import android.app.Service
 import android.content.Context
@@ -14,6 +14,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.ImageView
+import space.anitama.anitama.R
 import kotlin.random.Random
 
 class OverlayService : Service() {

@@ -1,6 +1,5 @@
-package com.example.shimeji_anime_clone.ui.theme
+package com.example.anitama.ui.theme
 
-import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
